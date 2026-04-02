@@ -1,0 +1,269 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>Weekly Planner</title>
+
+<style>
+* {
+  margin:0;
+  padding:0;
+  box-sizing:border-box;
+  font-family:-apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+}
+
+body {
+  background:#0b0f1a;
+  color:white;
+  padding:20px;
+}
+
+h1 {
+  text-align:center;
+  margin-bottom:20px;
+}
+
+.grid {
+  display:grid;
+  grid-template-columns:repeat(auto-fit,minmax(250px,1fr));
+  gap:15px;
+}
+
+.day {
+  background:#111827;
+  padding:15px;
+  border-radius:12px;
+}
+
+.today {
+  border:2px solid #3b82f6;
+}
+
+.day h2 {
+  color:#3b82f6;
+}
+
+.date {
+  font-size:12px;
+  color:white;
+  opacity:0.8;
+  margin-bottom:10px;
+}
+
+input {
+  width:100%;
+  padding:10px;
+  border:none;
+  border-radius:8px;
+  margin-bottom:10px;
+  background:#0f172a;
+  color:white;
+}
+
+ul {
+  list-style:none;
+}
+
+li {
+  display:flex;
+  justify-content:space-between;
+  align-items:center;
+  background:#0f172a;
+  padding:8px;
+  border-radius:8px;
+  margin-bottom:6px;
+  cursor:pointer;
+  transition:0.2s;
+}
+
+li:hover {
+  background:#1e293b;
+}
+
+.completed {
+  text-decoration:line-through;
+  color:#6b7280;
+}
+
+/* PRIORIDADES */
+.priority-high { border-left:4px solid #ef4444; }
+.priority-medium { border-left:4px solid #facc15; }
+.priority-low { border-left:4px solid #3b82f6; }
+
+/* ANIMAÇÃO ENTRADA */
+@keyframes taskEnter {
+  0% { opacity:0; transform:translateY(10px) scale(0.95); }
+  60% { opacity:1; transform:translateY(-2px) scale(1.02); }
+  100% { transform:translateY(0) scale(1); }
+}
+.task-enter { animation:taskEnter 0.35s ease; }
+
+/* ANIMAÇÃO SAÍDA */
+@keyframes taskExit {
+  to { opacity:0; transform:translateX(20px); }
+}
+.task-exit { animation:taskExit 0.25s ease forwards; }
+
+button {
+  background:none;
+  border:none;
+  cursor:pointer;
+  font-size:14px;
+  margin-left:4px;
+}
+</style>
+</head>
+
+<body>
+
+<h1>Weekly Planner</h1>
+<div class="grid" id="grid"></div>
+
+<script>
+const days = ["Monday","Tuesday","Wednesday","Thursday","Friday","Saturday","Sunday"];
+let data = JSON.parse(localStorage.getItem("planner")) || {};
+
+// PEGAR DATAS DA SEMANA
+function getWeekDates() {
+  const today = new Date();
+  const day = today.getDay();
+  const diff = today.getDate() - day + (day === 0 ? -6 : 1);
+  const monday = new Date(today.setDate(diff));
+
+  return days.map((_, i) => {
+    const d = new Date(monday);
+    d.setDate(monday.getDate() + i);
+    return d;
+  });
+}
+
+function formatDate(date) {
+  return date.toLocaleDateString("en-US", {
+    month: "short",
+    day: "numeric"
+  });
+}
+
+function save(){
+  localStorage.setItem("planner", JSON.stringify(data));
+}
+
+// ORDENAÇÃO
+function sortTasks(tasks) {
+  const order = { high:1, medium:2, low:3, "":4 };
+
+  return tasks.sort((a,b)=>{
+    if(a.completed !== b.completed){
+      return a.completed ? 1 : -1;
+    }
+    return order[a.priority] - order[b.priority];
+  });
+}
+
+// RENDER
+function render(){
+  const grid=document.getElementById("grid");
+  grid.innerHTML="";
+
+  const todayIndex = new Date().getDay();
+  const todayName = days[todayIndex===0?6:todayIndex-1];
+  const weekDates = getWeekDates();
+
+  days.forEach((day,index)=>{
+    if(!data[day]) data[day]=[];
+
+    const div=document.createElement("div");
+    div.className="day";
+    if(day===todayName) div.classList.add("today");
+
+    div.innerHTML=`
+      <h2>${day}</h2>
+      <div class="date">${formatDate(weekDates[index])}</div>
+      <input placeholder="Add task..." onkeypress="add(event,'${day}')">
+      <ul id="${day}"></ul>
+    `;
+
+    grid.appendChild(div);
+
+    const ul=div.querySelector("ul");
+
+    sortTasks(data[day]).forEach((t,i)=>{
+      const li=document.createElement("li");
+
+      if(t.completed) li.classList.add("completed");
+      if(t.priority) li.classList.add("priority-"+t.priority);
+
+      li.innerHTML=`
+        <span>${t.text}</span>
+        <div>
+          <button>🔴</button>
+          <button>🟡</button>
+          <button>🔵</button>
+          <button>✕</button>
+        </div>
+      `;
+
+      li.onclick=()=>toggle(day,i);
+
+      const btns=li.querySelectorAll("button");
+
+      btns[0].onclick=(e)=>{e.stopPropagation(); setPriority(day,i,'high');};
+      btns[1].onclick=(e)=>{e.stopPropagation(); setPriority(day,i,'medium');};
+      btns[2].onclick=(e)=>{e.stopPropagation(); setPriority(day,i,'low');};
+      btns[3].onclick=(e)=>{e.stopPropagation(); removeTask(day,i,li);};
+
+      ul.appendChild(li);
+    });
+  });
+}
+
+// ADD
+function add(e,day){
+  if(e.key==="Enter"){
+    const text=e.target.value.trim();
+    if(!text)return;
+
+    data[day].push({text,completed:false,priority:""});
+    e.target.value="";
+
+    save();
+    render();
+
+    setTimeout(()=>{
+      const ul=document.getElementById(day);
+      const last=ul.lastElementChild;
+      if(last) last.classList.add("task-enter");
+    },0);
+  }
+}
+
+// TOGGLE
+function toggle(day,i){
+  data[day][i].completed=!data[day][i].completed;
+  save();
+  render();
+}
+
+// PRIORIDADE
+function setPriority(day,i,level){
+  data[day][i].priority=level;
+  save();
+  render();
+}
+
+// REMOVER
+function removeTask(day,i,element){
+  element.classList.add("task-exit");
+
+  setTimeout(()=>{
+    data[day].splice(i,1);
+    save();
+    render();
+  },250);
+}
+
+render();
+</script>
+
+</body>
+</html>
